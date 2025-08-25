@@ -2072,6 +2072,20 @@ function Library:createManager(options: table)
 			loadThemeConfig(ThemeConfigs:getValue())
 		end,
 	})
+	ThemeManager:createButton({
+        text = "Set as Auto Load",
+        callback = function()
+            -- write the current theme config name to Theme/autoload.txt so it can be auto loaded
+            if writefile then
+                writefile(options.folderName .. "/Theme/autoload.txt", ThemeConfigs:getValue())
+            end
+        end,
+    })
+
+    -- Auto load (themes)
+    if isfile(options.folderName .. "/Theme/autoload.txt") then
+        loadThemeConfig(readfile(options.folderName .. "/Theme/autoload.txt"))
+    end
 
 	self.managerCreated = true
 end
