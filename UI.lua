@@ -1697,16 +1697,18 @@ function Library:createManager(options: table)
 		return jsons
 	end
 
-	local function getThemeJsons()
-		local themeJsons = {}
-		for _, file in ipairs(listfiles(options.folderName .. "/Theme")) do
-			file = string.gsub(file, options.folderName .. "/Theme" .. "\\", "")
-			file = string.gsub(file, ".json", "")
-			table.insert(themeJsons, file)
-		end
+	 local function getThemeJsons()
+        local themeJsons = {}
+        for _, file in ipairs(listfiles(options.folderName .. "/Theme")) do
+            -- extract the filename (basename) without extension, works with both / and \
+            local name = file:match("([^/\\]+)%.json$") or file:match("([^/\\]+)$") or file
+            -- ensure we only return clean name (no slashes)
+            name = tostring(name):gsub("%.json$", ""):gsub("[/\\]", "")
+            table.insert(themeJsons, name)
+        end
 
-		return themeJsons
-	end
+        return themeJsons
+    end
 
 	local function getSavedData()
 		local SavedData = {
@@ -1845,43 +1847,48 @@ function Library:createManager(options: table)
 		end
 	end
 
-	local function loadThemeConfig(fileName: string)
-		-- Validate filename
-		if not fileName or fileName == "" then
-			warn("loadThemeConfig called with nil/empty filename")
-			return
-		end
+    local function loadThemeConfig(fileName: string)
+        -- Validate filename and sanitize to basename without extension
+        if not fileName or fileName == "" then
+            warn("loadThemeConfig called with nil/empty filename")
+            return
+        end
 
-		local filePath = options.folderName .. "/Theme/" .. fileName .. ".json"
+        -- strip any path or .json that might have been included
+        local safeName = tostring(fileName)
+        safeName = safeName:match("([^/\\]+)%.json$") or safeName:match("([^/\\]+)$") or safeName
+        safeName = safeName:gsub("%.json$", ""):gsub("[/\\]", "")
 
-		-- Ensure file exists
-		if not isfile or not isfile(filePath) then
-			warn("Theme config file does not exist: " .. filePath)
-			return
-		end
+        local filePath = options.folderName .. "/Theme/" .. safeName .. ".json"
 
-		-- Safely read & decode JSON
-		local ok, decodedOrErr = pcall(function()
-			return game:GetService("HttpService"):JSONDecode(readfile(filePath))
-		end)
+        -- Ensure file exists
+        if not isfile or not isfile(filePath) then
+            warn("Theme config file does not exist: " .. tostring(filePath))
+            return
+        end
 
-		if not ok then
-			warn("Failed to read/decode theme config '" .. tostring(fileName) .. "': " .. tostring(decodedOrErr))
-			return
-		end
+        -- Safely read & decode JSON
+        local ok, decodedOrErr = pcall(function()
+            return game:GetService("HttpService"):JSONDecode(readfile(filePath))
+        end)
 
-		local decoded = decodedOrErr
+        if not ok then
+            warn("Failed to read/decode theme config '" .. tostring(safeName) .. "': " .. tostring(decodedOrErr))
+            return
+        end
 
-		for elementType, elementData in pairs(shared.Flags) do
-			for elementName, _ in pairs(elementData) do
-				if elementType == "ColorPicker" and decoded.ColorPicker and decoded.ColorPicker[elementName] then
-					shared.Flags.ColorPicker[elementName]:updateColor({
-						color = Color3.fromRGB(unpack(decoded.ColorPicker[elementName].color)),
-					})
-				end
-			end
-		end
-	end
+        local decoded = decodedOrErr
+
+        for elementType, elementData in pairs(shared.Flags) do
+            for elementName, _ in pairs(elementData) do
+                if elementType == "ColorPicker" and decoded.ColorPicker and decoded.ColorPicker[elementName] then
+                    shared.Flags.ColorPicker[elementName]:updateColor({
+                        color = Color3.fromRGB(unpack(decoded.ColorPicker[elementName].color)),
+                    })
+                end
+            end
+        end
+    end
 
 	local UI = Library:createTab({ text = "UI", icon = options.icon })
 	local Page = UI:createSubTab({ text = "Page 1" })
@@ -2059,20 +2066,28 @@ function Library:createManager(options: table)
 	local themeConfigName = ThemeManager:createTextBox({ text = "Theme Config Name" })
 
 	ThemeManager:createButton({
-		text = "Create Theme Config",
-		callback = function()
-			local ThemeData = getThemeData()
-			local encoded = game:GetService("HttpService"):JSONEncode(ThemeData)
-			writefile(options.folderName .. "/" .. "Theme/" .. themeConfigName:getText() .. ".json", encoded)
+        text = "Create Theme Config",
+        callback = function()
+            local ThemeData = getThemeData()
+            local encoded = game:GetService("HttpService"):JSONEncode(ThemeData)
 
-			if shared.Flags.Dropdown["Theme Configs"] then
-				shared.Flags.Dropdown["Theme Configs"]:updateList({
-					list = getThemeJsons(),
-					default = { shared.Flags.Dropdown["Theme Configs"]:getValue() },
-				})
-			end
-		end,
-	})
+            -- sanitize user input
+            local name = tostring(themeConfigName:getText() or ""):gsub("%.json$", ""):gsub("[/\\]", "")
+            if name == "" then
+                warn("Theme config name is empty")
+                return
+            end
+
+            writefile(options.folderName .. "/Theme/" .. name .. ".json", encoded)
+
+            if shared.Flags.Dropdown["Theme Configs"] then
+                shared.Flags.Dropdown["Theme Configs"]:updateList({
+                    list = getThemeJsons(),
+                    default = { shared.Flags.Dropdown["Theme Configs"]:getValue() },
+                })
+            end
+        end,
+    })
 
 	local ThemeConfigs = ThemeManager:createDropdown({
 		text = "Theme Configs",
@@ -2080,32 +2095,42 @@ function Library:createManager(options: table)
 	})
 
 	ThemeManager:createButton({
-		text = "Save Theme Config",
-		callback = function()
-			local ThemeData = getThemeData()
-			local encoded = game:GetService("HttpService"):JSONEncode(ThemeData)
-			writefile(options.folderName .. "/" .. "Theme/" .. ThemeConfigs:getValue() .. ".json", encoded)
-			ThemeConfigs:updateList({ list = getThemeJsons(), default = { ThemeConfigs:getValue() } })
-		end,
-	})
+        text = "Save Theme Config",
+        callback = function()
+            local ThemeData = getThemeData()
+            local encoded = game:GetService("HttpService"):JSONEncode(ThemeData)
+
+            -- sanitize selected name
+            local selected = ThemeConfigs and ThemeConfigs:getValue() or ""
+            selected = tostring(selected):gsub("%.json$", ""):gsub("[/\\]", "")
+            if selected == "" then
+                warn("No theme selected to save")
+                return
+            end
+
+            writefile(options.folderName .. "/Theme/" .. selected .. ".json", encoded)
+            ThemeConfigs:updateList({ list = getThemeJsons(), default = { selected } })
+        end,
+    })
 
 	ThemeManager:createButton({
-		text = "Load Theme Config",
-		callback = function()
-			local selected = ThemeConfigs and ThemeConfigs:getValue()
-			if not selected or selected == "" then
-				warn("No theme selected to load")
-				return
-			end
-			loadThemeConfig(selected)
-		end,
-	})
+        text = "Load Theme Config",
+        callback = function()
+            local selected = ThemeConfigs and ThemeConfigs:getValue()
+            if not selected or selected == "" then
+                warn("No theme selected to load")
+                return
+            end
+            loadThemeConfig(selected)
+        end,
+    })
 	ThemeManager:createButton({
         text = "Set as Auto Load",
         callback = function()
-            -- write the current theme config name to Theme/autoload.txt so it can be auto loaded
-            local selected = ThemeConfigs and ThemeConfigs:getValue()
-            if not selected or selected == "" then
+            -- write a clean basename to Theme/autoload.txt so it can be auto loaded
+            local selected = ThemeConfigs and ThemeConfigs:getValue() or ""
+            selected = tostring(selected):gsub("%.json$", ""):gsub("[/\\]", "")
+            if selected == "" then
                 warn("No theme selected to set as auto load")
                 return
             end
@@ -2118,8 +2143,12 @@ function Library:createManager(options: table)
     -- Auto load (themes)
     if isfile and isfile(options.folderName .. "/Theme/autoload.txt") then
         local autoloadName = readfile(options.folderName .. "/Theme/autoload.txt")
-        if autoloadName and autoloadName ~= "" then
-            loadThemeConfig(autoloadName)
+        -- trim whitespace and newlines
+        if autoloadName then
+            autoloadName = tostring(autoloadName):match("^%s*(.-)%s*$") or autoloadName
+            if autoloadName ~= "" then
+                loadThemeConfig(autoloadName)
+            end
         end
     end
 
