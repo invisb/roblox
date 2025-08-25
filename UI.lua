@@ -2003,6 +2003,18 @@ function Library:createManager(options: table)
 		end,
 	})
 
+	SaveManager:createButton({
+	text = "Delete Saved Config",
+		callback = function()
+			local configToDelete = Configs:getValue()
+			local filePath = options.folderName .. "/" .. configToDelete .. ".json"
+			if isfile and delfile and isfile(filePath) then
+				delfile(filePath)
+				Configs:updateList({ list = getJsons(), default = {} })
+			end
+		end,
+	})
+
 	-- Auto load
 	SaveManager:createButton({
 		text = "Set as Auto Load",
