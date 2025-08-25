@@ -1561,7 +1561,7 @@ end
 
 -- Later put this into a module, but this is fine if it's put here anyways.
 local ChildRemoved = false
-function Library:notify(options: table)
+function Library:notify(options, table)
 	Utility:validateOptions(options, {
 		title = { Default = "Notification", ExpectedType = "string" },
 		text = { Default = "Hello world", ExpectedType = "string" },
@@ -1846,12 +1846,35 @@ function Library:createManager(options: table)
 	end
 
 	local function loadThemeConfig(fileName: string)
-		local decoded = game:GetService("HttpService")
-			:JSONDecode(readfile(options.folderName .. "/" .. "Theme/" .. fileName .. ".json"))
+		-- Validate filename
+		if not fileName or fileName == "" then
+			warn("loadThemeConfig called with nil/empty filename")
+			return
+		end
+
+		local filePath = options.folderName .. "/Theme/" .. fileName .. ".json"
+
+		-- Ensure file exists
+		if not isfile or not isfile(filePath) then
+			warn("Theme config file does not exist: " .. filePath)
+			return
+		end
+
+		-- Safely read & decode JSON
+		local ok, decodedOrErr = pcall(function()
+			return game:GetService("HttpService"):JSONDecode(readfile(filePath))
+		end)
+
+		if not ok then
+			warn("Failed to read/decode theme config '" .. tostring(fileName) .. "': " .. tostring(decodedOrErr))
+			return
+		end
+
+		local decoded = decodedOrErr
 
 		for elementType, elementData in pairs(shared.Flags) do
 			for elementName, _ in pairs(elementData) do
-				if elementType == "ColorPicker" and decoded.ColorPicker[elementName] then
+				if elementType == "ColorPicker" and decoded.ColorPicker and decoded.ColorPicker[elementName] then
 					shared.Flags.ColorPicker[elementName]:updateColor({
 						color = Color3.fromRGB(unpack(decoded.ColorPicker[elementName].color)),
 					})
@@ -2069,22 +2092,35 @@ function Library:createManager(options: table)
 	ThemeManager:createButton({
 		text = "Load Theme Config",
 		callback = function()
-			loadThemeConfig(ThemeConfigs:getValue())
+			local selected = ThemeConfigs and ThemeConfigs:getValue()
+			if not selected or selected == "" then
+				warn("No theme selected to load")
+				return
+			end
+			loadThemeConfig(selected)
 		end,
 	})
 	ThemeManager:createButton({
         text = "Set as Auto Load",
         callback = function()
             -- write the current theme config name to Theme/autoload.txt so it can be auto loaded
+            local selected = ThemeConfigs and ThemeConfigs:getValue()
+            if not selected or selected == "" then
+                warn("No theme selected to set as auto load")
+                return
+            end
             if writefile then
-                writefile(options.folderName .. "/Theme/autoload.txt", ThemeConfigs:getValue())
+                writefile(options.folderName .. "/Theme/autoload.txt", selected)
             end
         end,
     })
 
     -- Auto load (themes)
-    if isfile(options.folderName .. "/Theme/autoload.txt") then
-        loadThemeConfig(readfile(options.folderName .. "/Theme/autoload.txt"))
+    if isfile and isfile(options.folderName .. "/Theme/autoload.txt") then
+        local autoloadName = readfile(options.folderName .. "/Theme/autoload.txt")
+        if autoloadName and autoloadName ~= "" then
+            loadThemeConfig(autoloadName)
+        end
     end
 
 	self.managerCreated = true
