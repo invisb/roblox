@@ -1802,8 +1802,14 @@ function Library:createManager(options: table)
 	end
 
 	local function loadSaveConfig(fileName: string)
-		local decoded = game:GetService("HttpService")
-			:JSONDecode(readfile(options.folderName .. "/" .. fileName .. ".json"))
+		local filePath = options.folderName .. "/" .. fileName .. ".json"
+		local decoded
+		if isfile and isfile(filePath) then
+			decoded = game:GetService("HttpService"):JSONDecode(readfile(filePath))
+		else
+			warn("Config file does not exist: " .. filePath)
+			return
+		end
 
 		for elementType, elementData in pairs(shared.Flags) do
 			for elementName, _ in pairs(elementData) do
